@@ -6,7 +6,7 @@ services:
     image: sellerservice:latest
     container_name: sellerservice
     ports:
-      - "8084:8084"
+      - "8233:8233"
     networks:
       - updated_orgadmin_rmscadminnetwork
     environment:
