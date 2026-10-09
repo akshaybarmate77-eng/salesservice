@@ -1,3 +1,4 @@
+```groovy
 pipeline {
     agent any
 
@@ -18,8 +19,27 @@ pipeline {
 
         stage('Docker Version') {
             steps {
-                sh 'docker --version'
-                sh 'docker-compose --version'  // ✅ Use with hyphen
+                sh '''
+                    set -e
+                    docker --version
+                    docker compose version
+                '''
+            }
+        }
+
+        stage('Validate Configuration') {
+            steps {
+                sh '''
+                    set -e
+
+                    if [ ! -f "$COMPOSE_FILE" ]; then
+                        echo "ERROR: Compose file not found: $COMPOSE_FILE"
+                        exit 1
+                    fi
+
+                    docker compose -f "$COMPOSE_FILE" config -q
+                    echo "Docker Compose configuration is valid."
+                '''
             }
         }
 
@@ -27,24 +47,30 @@ pipeline {
             steps {
                 script {
                     def isRegistryRunning = sh(
-                        script: "docker ps -q -f name=${REGISTRY_CONTAINER_NAME}",
+                        script: "docker ps -q -f name=^/${REGISTRY_CONTAINER_NAME}$",
                         returnStdout: true
                     ).trim()
 
                     if (isRegistryRunning) {
-                        echo "${REGISTRY_CONTAINER_NAME} is running. Proceeding to build and start ${TARGET_SERVICE}..."
+                        echo "${REGISTRY_CONTAINER_NAME} is running. Deploying ${TARGET_SERVICE}..."
 
-                        // Remove existing container
-                        sh "docker rm -f ${TARGET_CONTAINER_NAME} || true"
+                        // Build the new image before replacing the current container.
+                        sh "docker compose -f ${COMPOSE_FILE} build ${TARGET_SERVICE}"
 
-                        // Remove existing image
-                        sh "docker rmi -f ${TARGET_IMAGE_NAME} || true"
+                        // Replace the existing service container.
+                        sh "docker compose -f ${COMPOSE_FILE} up -d --no-deps --force-recreate ${TARGET_SERVICE}"
 
-                        // ✅ Use docker-compose (with hyphen) for build and up
-                        sh "docker-compose -f ${COMPOSE_FILE} build ${TARGET_SERVICE}"
-                        sh "docker-compose -f ${COMPOSE_FILE} up -d ${TARGET_SERVICE}"
+                        // Verify the container is running.
+                        sh '''
+                            set -e
+                            docker ps --filter "name=^/sellerservice$" \
+                                --filter "status=running" \
+                                --format '{{.Names}}' | grep -Fx sellerservice
+                        '''
+
+                        echo "${TARGET_SERVICE} deployment completed."
                     } else {
-                        error "${REGISTRY_CONTAINER_NAME} is not running. Aborting deployment of ${TARGET_SERVICE}."
+                        error "${REGISTRY_CONTAINER_NAME} is not running. Deployment aborted."
                     }
                 }
             }
@@ -52,8 +78,17 @@ pipeline {
     }
 
     post {
+        success {
+            echo 'Deployment completed successfully.'
+        }
+
+        failure {
+            echo 'Deployment failed. Check the preceding Jenkins logs.'
+        }
+
         always {
-            echo '✅ Pipeline execution completed.'
+            echo 'Pipeline execution completed.'
         }
     }
 }
+```
