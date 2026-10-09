@@ -1,4 +1,3 @@
-```groovy
 pipeline {
     agent any
 
@@ -54,13 +53,13 @@ pipeline {
                     if (isRegistryRunning) {
                         echo "${REGISTRY_CONTAINER_NAME} is running. Deploying ${TARGET_SERVICE}..."
 
-                        // Build the new image before replacing the current container.
+                        // Build the service image
                         sh "docker compose -f ${COMPOSE_FILE} build ${TARGET_SERVICE}"
 
-                        // Replace the existing service container.
+                        // Create or recreate the service container
                         sh "docker compose -f ${COMPOSE_FILE} up -d --no-deps --force-recreate ${TARGET_SERVICE}"
 
-                        // Verify the container is running.
+                        // Verify the service container is running
                         sh '''
                             set -e
                             docker ps --filter "name=^/sellerservice$" \
@@ -68,7 +67,7 @@ pipeline {
                                 --format '{{.Names}}' | grep -Fx sellerservice
                         '''
 
-                        echo "${TARGET_SERVICE} deployment completed."
+                        echo "${TARGET_SERVICE} deployment completed successfully."
                     } else {
                         error "${REGISTRY_CONTAINER_NAME} is not running. Deployment aborted."
                     }
@@ -91,4 +90,3 @@ pipeline {
         }
     }
 }
-```
